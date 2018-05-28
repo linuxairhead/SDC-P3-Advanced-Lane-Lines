@@ -127,4 +127,4 @@ Here's a [link to my video result](./project_video.mp4)
 Here I'll talk about the approach I took, what techniques I used, what worked and why, where the pipeline might fail and how I might improve it if I were going to pursue this project further.  
 
 activate carnd-term1
-docker Advanced_Lane_Lines.ipynb
+jupyter notebook Advanced Lane Lines.ipynb
