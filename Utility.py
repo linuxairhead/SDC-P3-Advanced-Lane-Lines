@@ -15,7 +15,8 @@ def warpPoint(img):
     hight,width = img.shape[:2]
 	
     # define source and destination points for transform
-    src = np.float32([(575,464), (707,464), (258,682), (1049,682)])	
+    src = np.float32([(570,460), (710,460), (205,700), (1100,700)])	
+	#src = np.float32([(575,464), (707,464), (258,682), (1049,682)])	
     dst = np.float32([(200,0), (width-200,0), (200,hight), (width-200,hight)])
 	
     return src, dst, hight, width
@@ -117,6 +118,7 @@ def hls_select(img, thresh=(0, 255)):
     
     # 3) Return a binary image of threshold result
     return binary_output
+
 	
 def displayResult( img1, img2, title1, title2, withUnWarp = False ):
 
