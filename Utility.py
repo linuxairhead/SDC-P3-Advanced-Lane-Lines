@@ -15,9 +15,9 @@ def warpPoint(img):
     hight,width = img.shape[:2]
 	
     # define source and destination points for transform
-    src = np.float32([(570,460), (710,460), (205,700), (1100,700)])	
-	#src = np.float32([(575,464), (707,464), (258,682), (1049,682)])	
-    dst = np.float32([(200,0), (width-200,0), (200,hight), (width-200,hight)])
+    src = np.float32([(560,455), (720,455), (205,670), (1100,670)])	
+	
+    dst = np.float32([(100,0), (width-100,0), (100,hight), (width-100,hight)])
 	
     return src, dst, hight, width
 	
