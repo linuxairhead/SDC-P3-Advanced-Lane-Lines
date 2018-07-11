@@ -296,33 +296,22 @@ The goals / steps of this project are the following:
 * Magnitude & Direction of the Gradient
 * S thresholds
 
-		# Edit this function to create your own pipeline.
-		def pipelineTest2(img, s_thresh=(170, 255), sx_thresh=(20, 100)):
+		def pipelineTest(img):
 			
 			# unwarp the image
 			undistort_Img = undistort(img, dist, mtx)
 			unwarp_Img, M, Minv = unwarp(undistort_Img)
-			
-			# Convert to HLS color space and separate the V channel
-			hls = cv2.cvtColor(unwarp_Img, cv2.COLOR_RGB2HLS)
-			l_channel = hls[:,:,1]
-			s_channel = hls[:,:,2]
-			
-			# Sobel x
-			sobelx = cv2.Sobel(l_channel, cv2.CV_64F, 1, 0) # Take the derivative in x
-			abs_sobelx = np.absolute(sobelx) # Absolute x derivative to accentuate lines away from horizontal
-			scaled_sobel = np.uint8(255*abs_sobelx/np.max(abs_sobelx))
-			
-			# Threshold x gradient
-			sxbinary = np.zeros_like(scaled_sobel)
-			sxbinary[(scaled_sobel >= sx_thresh[0]) & (scaled_sobel <= sx_thresh[1])] = 1
-			
-			# Threshold color channel
-			s_binary = np.zeros_like(s_channel)
-			s_binary[(s_channel >= s_thresh[0]) & (s_channel <= s_thresh[1])] = 1
-			# Stack each channel
-			color_binary = np.dstack(( np.zeros_like(sxbinary), sxbinary, s_binary)) * 255
-			return color_binary, sxbinary
+
+			# Apply each of the thresholding functions
+			aImg_Sobel = abs_sobel_thresh(unwarp_Img, orient='x', thresh_min=20, thresh_max=150)
+			aImg_MagBinary = mag_thresh(unwarp_Img, sobel_kernel=25, mag_thresh=(30, 200))
+			dir_binary = dir_threshold(unwarp_Img, sobel_kernel=25, thresh=(0.7, 1.3))
+			aImg_HLS = hls_select(unwarp_Img, thresh=(170, 255))
+
+			combined = np.zeros_like(dir_binary)
+			combined[(aImg_Sobel == 1) | ((aImg_MagBinary == 1) & (dir_binary == 1) | (aImg_HLS == 1))] = 1
+
+			return combined
 	
 ![alt text][image11]
 ![alt text][image12]
@@ -334,6 +323,114 @@ The goals / steps of this project are the following:
 ![alt text][image18]
 
 ---
+## Define conversions in x and y from pixels space to meters
+
+* decide explicitly which pixels are part of the lines
+	* which belong to the left line
+	* which belong to the right line.
+	
+		histogram = np.sum(result[result.shape[0]//2:,:], axis=0)
+		plt.plot(histogram)
+		plt.title('Peaks in a Histogram')
+
+![alt text][image19]
+
+* Using sliding windows through a warped binary image and find "hot" pixels are associated with the lane lines.
+	
+		def sliding_windows( binary_warped ):
+
+			# Assuming you have created a warped binary image called "binary_warped"
+			# Take a histogram of the bottom half of the image
+			histogram = np.sum(binary_warped[binary_warped.shape[0]//2:,:], axis=0)
+			
+			# Create an output image to draw on and  visualize the result
+			out_img = np.dstack((binary_warped, binary_warped, binary_warped))*255
+
+			# Find the peak of the left and right halves of the histogram
+			# These will be the starting point for the left and right lines
+			midpoint = np.int(histogram.shape[0]/2)
+			leftx_base = np.argmax(histogram[:midpoint])
+			rightx_base = np.argmax(histogram[midpoint:]) + midpoint
+
+			# Set height of windows
+			window_height = np.int(binary_warped.shape[0]/nwindows)
+
+			# Identify the x and y positions of all nonzero pixels in the image
+			nonzero = binary_warped.nonzero()
+			nonzeroy = np.array(nonzero[0])
+			nonzerox = np.array(nonzero[1])
+
+			# Current positions to be updated for each window
+			leftx_current = leftx_base
+			rightx_current = rightx_base
+			
+			# Create empty lists to receive left and right lane pixel indices
+			left_lane_inds = []
+			right_lane_inds = []
+
+			# Step through the windows one by one
+			for window in range(nwindows):
+				
+				# Identify window boundaries in x and y (and right and left)
+				win_y_low = binary_warped.shape[0] - (window+1)*window_height
+				win_y_high = binary_warped.shape[0] - window*window_height
+				win_xleft_low = leftx_current - margin
+				win_xleft_high = leftx_current + margin
+				win_xright_low = rightx_current - margin
+				win_xright_high = rightx_current + margin    
+			
+				# Draw the windows on the visualization image    
+				cv2.rectangle(out_img,(win_xleft_low,win_y_low),(win_xleft_high,win_y_high),(0,255,0), 2) 
+				cv2.rectangle(out_img,(win_xright_low,win_y_low),(win_xright_high,win_y_high),(0,255,0), 2) 
+				
+				# Identify the nonzero pixels in x and y within the window
+				good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & 
+						(nonzerox >= win_xleft_low) &  (nonzerox < win_xleft_high)).nonzero()[0]
+				good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & 
+						(nonzerox >= win_xright_low) &  (nonzerox < win_xright_high)).nonzero()[0]
+				
+				# Append these indices to the lists
+				left_lane_inds.append(good_left_inds)
+				right_lane_inds.append(good_right_inds)
+				
+				# If you found > minpix pixels, recenter next window on their mean position
+				if len(good_left_inds) > minpix:
+					leftx_current = np.int(np.mean(nonzerox[good_left_inds]))
+				if len(good_right_inds) > minpix:        
+					rightx_current = np.int(np.mean(nonzerox[good_right_inds]))
+
+			# Concatenate the arrays of indices
+			left_lane_inds = np.concatenate(left_lane_inds)
+			right_lane_inds = np.concatenate(right_lane_inds)
+
+			# Extract left and right line pixel positions
+			leftx = nonzerox[left_lane_inds]
+			lefty = nonzeroy[left_lane_inds] 
+			rightx = nonzerox[right_lane_inds]
+			righty = nonzeroy[right_lane_inds] 
+
+			# Fit a second order polynomial to each
+			left_fit = np.polyfit(lefty, leftx, 2)
+			right_fit = np.polyfit(righty, rightx, 2)
+			
+			# Fit a second order polynomial to each
+			left_fit_m = np.polyfit(lefty*ym_per_pix, leftx*xm_per_pix, 2)
+			right_fit_m = np.polyfit(righty*ym_per_pix, rightx*xm_per_pix, 2)
+			
+			return left_lane_inds, right_lane_inds, left_fit, right_fit, left_fit_m, right_fit_m, out_img
+	
+![alt text][image20]
+
+* define the meters per pixel from the plot
+	* Given condition - projecting a section of lane similar to the images
+		* the lane is about 30 meters long and 3.7 meters wide.
+	* Get the pixel from the image 720 as y, 935 as x 
+		
+			Define conversions in x and y from pixels space to meters
+			ym_per_pix = 30/720 # meters per pixel in y dimension
+			xm_per_pix = 3.7/935 # meters per pixel in x dimension
+		
+![alt text][image21]
 
 ## Measuring Curvature
 
@@ -341,23 +438,18 @@ The goals / steps of this project are the following:
 	* to fit a 2nd degree polynomial to that line
 	* from the line, calculate the radius of curvature
 	
-		def calculatePixelCurvature( left_fit, right_fit, ploty ) :
-			# Define y-value where we want radius of curvature
-			# I'll choose the maximum y-value, corresponding to the bottom of the image
-			y_eval = np.max(ploty)
-			left_curverad = ((1 + (2*left_fit[0]*y_eval + left_fit[1])**2)**1.5) / np.absolute(2*left_fit[0])
-			right_curverad = ((1 + (2*right_fit[0]*y_eval + right_fit[1])**2)**1.5) / np.absolute(2*right_fit[0])
-			
-			# Example values: 1926.74 1908.48
-			return left_curverad, right_curverad
-			
-* given meters per pixel fo x and y demention
- 			
- 		# Define conversions in x and y from pixels space to meters
-		ym_per_pix = 30/720 # meters per pixel in y dimension
-		xm_per_pix = 3.7/700 # meters per pixel in x dimension
+			def calculatePixelCurvature( left_fit, right_fit, ploty ) :
+				# Define y-value where we want radius of curvature
+				# I'll choose the maximum y-value, corresponding to the bottom of the image
+				y_eval = np.max(ploty)
+				left_curverad = ((1 + (2*left_fit[0]*y_eval + left_fit[1])**2)**1.5) / np.absolute(2*left_fit[0])
+				right_curverad = ((1 + (2*right_fit[0]*y_eval + right_fit[1])**2)**1.5) / np.absolute(2*right_fit[0])
+				
+				# Example values: 1926.74 1908.48
+				return left_curverad, right_curverad			
 
-* Calculated the new radius od curvature.
+
+* Calculated the new radius of curvature.
 			
 		def calculateActualCurvature( left_fitx, right_fitx, ploty ) :
 
@@ -460,7 +552,6 @@ The goals / steps of this project are the following:
 			lineImage, left_fitx, right_fitx = drawLine(image, left_fit, right_fit, ploty)
 			textLineImage = displayCurvature(lineImage, left_fit_m, right_fit_m, left_fitx , right_fitx, ploty )
 			
-			#displayResult(textLineImage, lineImage, os.path.basename(image), 'Combine Result' , False )
 			return textLineImage
 
 			
@@ -487,10 +578,14 @@ The goals / steps of this project are the following:
 
 ## Discussion
 * The Color difference of the road due to shadow or fade of road.
-	* it failed to detect the road whenever there was color difference.
+	* I was able to limited overcome by morphological transformation and Saturation Color Space from HLS. 
+	* When there was various color difference, it wasn't it failed to detect the road.
 
 * When there was curve ( harder challenge video ),  unabled to detect the lane correctly.
 	* when there was a sudden curve, it failed to detect the curve correctly.
+	
+* I estimated the meter per pixel from line detection plot, so It wasn't always gave me correct calculate value.
+	* I believe radair would give me more accurated value. 
 	
 
 
